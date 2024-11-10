@@ -13,15 +13,14 @@ cornerstone.imageCache.setMaximumSizeBytes(1024 * 1024 * 200); // 최대 200MB
 
 const App = () => {
   const viewerEl = useRef<HTMLDivElement>(null);
-  const [filesList, setFilesList] = useState<File[]>([]);
+  const [filesList, setFilesList] = useState<{ file: File; imageId: string }[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [currentFileIndex, setCurrentFileIndex] = useState(0);
 
-  console.log("filesList", filesList);
-
+  // 이미지 로드 및 표시
   useEffect(() => {
     if (filesList.length > 0) {
-      displayImage(filesList[currentFileIndex]);
+      displayImage(filesList[currentFileIndex].file);
     }
   }, [currentFileIndex, filesList]);
 
@@ -31,71 +30,90 @@ const App = () => {
     const element = viewerEl.current;
 
     if (element) {
-      if (
-        !cornerstone.getEnabledElements().some((e) => e.element === element)
-      ) {
+      if (!cornerstone.getEnabledElements().some((e) => e.element === element)) {
         cornerstone.enable(element);
       }
       try {
-        const image = await cornerstone.loadImage(imageId);
-        cornerstone.displayImage(element, image);
-        cornerstone.imageCache.purgeCache(); // 불필요한 이미지 캐시 해제
+        // 이미지 로드 및 캐시
+        const imageLoadObject = await cornerstone.loadAndCacheImage(imageId);
+
+        // imageLoadObject가 올바르게 로드되었는지 확인
+        // if (!imageLoadObject || !imageLoadObject.promise) {
+        //   throw new Error("이미지 로드 실패: promise가 undefined입니다.");
+        // }
+
+        // 캐시 추가
+        // cornerstone.imageCache.putImageLoadObject(imageId, imageLoadObject);
+        // console.log("이미지 캐시 후 상태:", cornerstone.imageCache.getCacheInfo());
+
+        // 이미지 화면에 표시
+        cornerstone.displayImage(element, imageLoadObject);
+
+        cornerstone.imageCache.putImageLoadObject(imageId, imageLoadObject);
+
       } catch (error) {
-        console.error("Image loading failed", error);
+        console.error("이미지 로드 실패", error);
       }
     }
     setIsLoading(false);
   };
 
+  // 파일 선택 처리
   const handleFileChange = async (
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
     setIsLoading(true);
     const files = event.target.files ? Array.from(event.target.files) : [];
-    setFilesList(files);
+    const newFilesList = await Promise.all(
+      files.map(async (file) => {
+        const imageId = cornerstoneWADOImageLoader.wadouri.fileManager.add(file);
+        return { file, imageId };
+      })
+    );
+    setFilesList(newFilesList);
 
-    if (files.length > 0) {
-      await displayImage(files[0]);
+    if (newFilesList.length > 0) {
+      await displayImage(newFilesList[0].file);
     }
     setIsLoading(false);
   };
 
+  // 파일 삭제 처리
   const handleFileDelete = (index: number) => {
-    console.log("handleFileDelete index", index);
-    const file = filesList[index];
-    console.log("handleFileDelete file", file);
-    const imageId = cornerstoneWADOImageLoader.wadouri.fileManager.get(file);
-    console.log("handleFileDelete imageId", imageId);
+    const { imageId, file } = filesList[index];
 
-    // 캐시에서 이미지 및 파일 제거
-    if (imageId) {
-      console.log("imageId??", imageId);
-      cornerstone.imageCache.removeImageLoadObject(imageId);
-      cornerstoneWADOImageLoader.wadouri.fileManager.remove(imageId);
+    // 삭제할 파일 및 imageId 로그 출력
+    console.log(`삭제할 파일: ${file.name}, imageId: ${imageId}`);
 
-      // ArrayBuffer 참조를 해제하여 메모리 해제 유도
-      const imageLoadObject = cornerstone.imageCache.getImageLoadObject(imageId);
-      console.log("imageLoadObject", imageLoadObject);
+    // 삭제 전 캐시 상태 출력
+    console.log("삭제 전 캐시 상태:", cornerstone.imageCache.getCacheInfo());
 
-      if (imageLoadObject && imageLoadObject.image) {
-        imageLoadObject.image.data = null; // ArrayBuffer 참조 해제
-      }
-      cornerstone.imageCache.purgeCache();
+    // 캐시에서 imageId가 존재하는지 확인하고 삭제 시도
+    const cache = cornerstone.imageCache.imageCache;
+    if (cache.hasOwnProperty(imageId)) {
+      cornerstone.imageCache.removeImage(imageId);
+      console.log(`imageId: ${imageId}가 캐시에서 제거되었습니다.`);
+    } else {
+      console.log(`imageId: ${imageId}는 캐시에서 찾을 수 없습니다.`);
     }
 
+    // 파일 관리에서 해당 imageId 삭제
+    cornerstoneWADOImageLoader.wadouri.fileManager.remove(imageId);
+
+    // 파일 리스트 업데이트
     const updatedFilesList = filesList.filter((_, i) => i !== index);
     setFilesList(updatedFilesList);
     setCurrentFileIndex((prevIndex) => (prevIndex > 0 ? prevIndex - 1 : 0));
 
-    // 모든 파일이 삭제된 경우 cornerstone 비활성화
-    if (
-      viewerEl.current &&
-      cornerstone
-        .getEnabledElements()
-        .some((e) => e.element === viewerEl.current)
-    ) {
+    // 파일이 없으면 Cornerstone 뷰어 비활성화
+    if (updatedFilesList.length === 0 && viewerEl.current) {
       cornerstone.disable(viewerEl.current);
+      console.log("파일이 없어 Cornerstone 뷰어가 비활성화되었습니다.");
     }
+
+    // 캐시 정리 후 상태 출력
+    cornerstone.imageCache.purgeCache();
+    console.log("삭제 후 캐시 상태:", cornerstone.imageCache.getCacheInfo());
   };
 
   return (
@@ -103,19 +121,19 @@ const App = () => {
       <div
         style={{
           border: "1px solid black",
-          height: "100dvh",
+          height: "100vh",
           overflow: "auto",
         }}
       >
         <input type="file" multiple onChange={handleFileChange} />
         <ul>
-          {filesList.map((file, index) => (
+          {filesList.map((fileObj, index) => (
             <li key={index}>
               <span
                 onClick={() => setCurrentFileIndex(index)}
                 style={{ cursor: "pointer" }}
               >
-                {file.name}
+                {fileObj.file.name}
               </span>
               <button onClick={() => handleFileDelete(index)}>삭제</button>
             </li>
