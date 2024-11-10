@@ -17,6 +17,8 @@ const App = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [currentFileIndex, setCurrentFileIndex] = useState(0);
 
+  console.log("filesList", filesList);
+
   // 이미지 로드 및 표시
   useEffect(() => {
     if (filesList.length > 0) {
@@ -37,22 +39,17 @@ const App = () => {
         // 이미지 로드 및 캐시
         const imageLoadObject = await cornerstone.loadAndCacheImage(imageId);
 
-        // imageLoadObject가 올바르게 로드되었는지 확인
-        // if (!imageLoadObject || !imageLoadObject.promise) {
-        //   throw new Error("이미지 로드 실패: promise가 undefined입니다.");
-        // }
-
-        // 캐시 추가
-        // cornerstone.imageCache.putImageLoadObject(imageId, imageLoadObject);
-        // console.log("이미지 캐시 후 상태:", cornerstone.imageCache.getCacheInfo());
+        // 이미지가 이미 캐시되어 있는지 확인 후 추가
+        if (!cornerstone.imageCache.imageCache.hasOwnProperty(imageId)) {
+          cornerstone.imageCache.putImageLoadObject(imageId, imageLoadObject);
+        }
 
         // 이미지 화면에 표시
         cornerstone.displayImage(element, imageLoadObject);
 
-        cornerstone.imageCache.putImageLoadObject(imageId, imageLoadObject);
-
+        console.log("이미지 캐시 후 상태:", cornerstone.imageCache.getCacheInfo());
       } catch (error) {
-        console.error("이미지 로드 실패", error);
+        // console.error("이미지 로드 실패", error);
       }
     }
     setIsLoading(false);
@@ -91,7 +88,7 @@ const App = () => {
     // 캐시에서 imageId가 존재하는지 확인하고 삭제 시도
     const cache = cornerstone.imageCache.imageCache;
     if (cache.hasOwnProperty(imageId)) {
-      cornerstone.imageCache.removeImage(imageId);
+      cornerstone.imageCache.removeIma(imageId); // 캐시에서 이미지 삭제
       console.log(`imageId: ${imageId}가 캐시에서 제거되었습니다.`);
     } else {
       console.log(`imageId: ${imageId}는 캐시에서 찾을 수 없습니다.`);
@@ -115,6 +112,8 @@ const App = () => {
     cornerstone.imageCache.purgeCache();
     console.log("삭제 후 캐시 상태:", cornerstone.imageCache.getCacheInfo());
   };
+
+  console.log("캐시 상태 확인", cornerstone.imageCache.getCacheInfo());
 
   return (
     <div style={{ display: "flex" }}>
