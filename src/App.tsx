@@ -88,7 +88,7 @@ const App = () => {
     // 캐시에서 imageId가 존재하는지 확인하고 삭제 시도
     const cache = cornerstone.imageCache.imageCache;
     if (cache.hasOwnProperty(imageId)) {
-      cornerstone.imageCache.removeIma(imageId); // 캐시에서 이미지 삭제
+      cornerstone.imageCache.removeImageLoadObject(imageId) // 캐시에서 이미지 삭제
       console.log(`imageId: ${imageId}가 캐시에서 제거되었습니다.`);
     } else {
       console.log(`imageId: ${imageId}는 캐시에서 찾을 수 없습니다.`);
